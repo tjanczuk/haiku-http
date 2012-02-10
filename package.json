@@ -1,0 +1,24 @@
+{
+  "name": "haiku-http",
+  "description": "Runtime for simple HTTP web APIs",
+  "version": "0.1.0",
+  "author": {
+    "name": "Tomasz Janczuk <tomasz@janczuk.org>",
+    "url": "http://tomasz.janczuk.org"
+  },
+  "dependencies": {
+    "optimist": "0.3.1"
+  },
+  "devDependencies": {
+  },
+  "homepage": "http://github.com/tjanczuk/haiku-http",
+  "bugs": { 
+    "url": "http://github.com/tjanczuk/haiku-http/issues"
+  },
+  "keywords": ["http", "application", "web", "api"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tjanczuk/haiku-http.git"
+  },
+  "engines": { "node": ">= 0.7.0-pre" }
+}
