@@ -48,6 +48,16 @@ var argv = require('optimist')
 		description: 'Number of requests before process recycle. Zero for no recycling.',
 		default: '1'
 	})
+	.options('a', {
+		alias: 'keepaliveTimout',
+		description: 'Maximum time in milliseconds to receive keepalive response from worker',
+		default: '5000'
+	})
+	.options('v', {
+		alias: 'keepaliveInterval',
+		description: 'Interval between keepalive requests',
+		default: '5000'
+	})
 	.check(function (args) { return !args.help; })
 	.check(function (args) { return args.p != args.s; })
 	.check(function (args) {
@@ -63,9 +73,6 @@ var argv = require('optimist')
 		    args.proxyPort = i == -1 ? 80 : proxy.substring(i + 1)
 		}
 		return true;
-	})
-	.check(function (args) {
-		return NaN !== (args.mr = parseInt(args.mr));
 	})
 	.argv;
 

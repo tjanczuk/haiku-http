@@ -9,6 +9,10 @@ var cooldown = false
 	, requestCount = 0
 	, argv
 
+process.on('message', function (msg) {
+	process.send({ response: msg.challange });
+})
+
 function log(thing) {
 	console.log(process.pid + ': ' + thing);
 }
@@ -19,7 +23,7 @@ function onRequestFinished(context) {
 		activeRequests--;
 		if (cooldown && 0 === activeRequests) {
 			process.nextTick(function() {
-				log('Recycling the worker')
+				log('Recycling self.')
 				process.exit();
 			});
 		}

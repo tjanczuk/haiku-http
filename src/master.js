@@ -6,11 +6,42 @@ function log(thing) {
 }
 
 function challange(worker) {
+	worker.challangeTimeout = setTimeout(function() {
+		delete worker.challangeTimeout;
+		worker.currentChallange = Math.random();
+		worker.send({ challange: worker.currentChallange });
+		worker.keepaliveTimeout = setTimeout(function () {
+			log('Worker ' + worker.process.pid + ' did not respond to keepalive challange within ' + argv.a + 'ms. Killing the process.');
+			process.kill(worker.process.pid);
+		}, argv.a); // the keepalive response timeout
+	}, argv.v); // the keepalive interval
+}
+
+function stopKeepalive(worker) {
+	if (worker.keepaliveTimeout) {
+		clearTimeout(worker.keepaliveTimeout);
+		delete worker.keepaliveTimeout;
+	}	
 	
+	if (worker.challangeTimeout) {
+		clearTimeout(worker.challangeTimeout);
+		delete worker.challangeTimeout;
+	}
 }
 
 function createOneWorker() {
 	var worker = cluster.fork();
+
+	worker.on('message', function(msg) {
+		stopKeepalive(worker);
+		if (msg.response !== worker.currentChallange) {
+			log('Worker ' + worker.process.pid + ' sent incorrect response to keepalive challange. Killing the process.');
+			process.kill(worker.process.pid);			
+		}
+		else
+			challange(worker);
+	});
+
 	challange(worker);
 }
 
@@ -29,7 +60,8 @@ exports.main = function (args) {
 		createOneWorker();
 
 	cluster.on('death', function (worker) {
-		log('Worker ' + worker.process.pid + ' exited, creating replacement');
+		log('Worker ' + worker.process.pid + ' exited, creating replacement worker.');
+		stopKeepalive(worker);
 		createOneWorker();
 	});
 
