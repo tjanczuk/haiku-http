@@ -4,7 +4,8 @@ var http = require('http')
 	, vm = require('vm')
 	, cluster = require('cluster')
 
-var cooldown = false
+var shutdown
+	, shutdownInProgress = false
 	, activeRequests = 0
 	, requestCount = 0
 	, argv
@@ -12,20 +13,59 @@ var cooldown = false
 process.on('message', function (msg) {
 	process.send({ response: msg.challange });
 })
+.on('uncaughtException', function (err) {
+	log('Entering shutdown mode after an uncaught exception: ' + err);
+	initiateShutdown();
+});
 
 function log(thing) {
 	console.log(process.pid + ': ' + thing);
+}
+
+function shutdownNext() {
+	if (shutdown) {
+		clearTimeout(shutdown);
+		shutdown = undefined;
+	}
+
+	process.nextTick(function() {
+		log('Recycling self')
+		process.exit();
+	});	
+}
+
+function initiateShutdown() {
+	if (!shutdownInProgress) {
+
+		// stop accepting new requests
+
+		httpServer.close();
+		httpsServer.close();		
+
+		shutdownInProgress = true;
+
+		if (0 === activeRequests) {
+			// there are no active requests - shut down now
+			shutdownNext();
+		}
+		else {
+			// delayed shutdown allows active requests to finish processing
+			// shutdown timeout is the same as the handler processing timeout
+			shutdown = setTimeout(shutdownNext, argv.t); 
+		}
+	}
 }
 
 function onRequestFinished(context) {
 	if (!context.finished) {
 		context.finished = true;
 		activeRequests--;
-		if (cooldown && 0 === activeRequests) {
-			process.nextTick(function() {
-				log('Recycling self.')
-				process.exit();
-			});
+		if (shutdownInProgress && 0 === activeRequests) {
+
+			// we have finished processing the last active request while in shutdown mode
+			// no reason to delay the shutdown any more - proceed to shutdown now
+
+			shutdownNext();
 		}
 	}
 }
@@ -63,7 +103,7 @@ function createSandbox(context) {
 		delete context.timeout;
 		haikuError(context, 500, 'Handler ' + context.handlerName + ' did not complete within the time limit of ' + argv.t + 'ms');
 		onRequestFinished(context);
-	}, argv.t);
+	}, argv.t); // handler processing timeout
 
 	// re-enable the server to accept subsequent connection when the response is sent
 
@@ -177,11 +217,9 @@ function resolveHandler(context) {
 function processRequest(req, res) {
 	activeRequests++;
 
-	if (!cooldown && argv.r > 0 && ++requestCount >= argv.r) {
-		log('Entering cooldown mode with active requests: ' + activeRequests);
-		cooldown = true;
-		httpServer.close();
-		httpsServer.close();		
+	if (!shutdownInProgress && argv.r > 0 && ++requestCount >= argv.r) {
+		log('Entering shutdown mode after reaching request quota. Current active requests: ' + activeRequests);
+		initiateShutdown();
 	}
 
 	req.pause();

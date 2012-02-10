@@ -2,7 +2,7 @@ var cluster = require('cluster');
 var argv;
 
 function log(thing) {
-	console.log(process.pid + ': ' + thing);
+	console.log(process.pid + ' (master): ' + thing);
 }
 
 function challange(worker) {
@@ -22,7 +22,7 @@ function stopKeepalive(worker) {
 		clearTimeout(worker.keepaliveTimeout);
 		delete worker.keepaliveTimeout;
 	}	
-	
+
 	if (worker.challangeTimeout) {
 		clearTimeout(worker.challangeTimeout);
 		delete worker.challangeTimeout;
@@ -55,6 +55,8 @@ exports.main = function (args) {
 	log('Max handler size [bytes]: ' + argv.i);
 	log('Max handler execution time [ms]: ' + argv.t);
 	log('Max requests before recycle: ' + argv.r);
+	log('Keepalive response timeout [ms]: ' + argv.a);
+	log('Keepalive interval [ms]: ' + argv.v);
 
 	for (var i = 0; i < argv.w; i++) 
 		createOneWorker();
