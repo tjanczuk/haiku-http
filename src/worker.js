@@ -95,6 +95,40 @@ function intercept(instance, func, inspector) {
 	}
 }
 
+var moduleSandbox = {
+	'http' : {
+		request: true,
+		get: true
+	},
+	'https' : {
+		request: true,
+		get: true		
+	},
+	'url' : true,
+	'net' : {
+		connect: true,
+		isIP: true
+	}
+}
+
+function createObjectSandbox(sandbox, object) {
+	if (true === sandbox)
+		return object;
+	else {
+		var result = {};
+		for (var element in sandbox) 
+			result[element] = createObjectSandbox(sandbox[element], object[element]);
+		return result;
+	}
+}
+
+function sandboxedRequire(name) {
+	if (['http', 'https', 'url', 'net'].some(function (i) { return i === name; }))
+		return createObjectSandbox(moduleSandbox[name], require.apply(this, arguments));
+	else
+		throw 'Module ' + name + ' is not available in the haiku-http sandbox.'
+}
+
 function createSandbox(context) {
 
 	// limit execution time of the handler to the preconfigured value
@@ -119,7 +153,8 @@ function createSandbox(context) {
 		req: context.req,
 		res: context.res,
 		setTimeout: setTimeout,
-		console: console
+		console: console,
+		require: sandboxedRequire
 	};	
 }
 
