@@ -96,10 +96,11 @@ var moduleSandbox = {
 		get: wrapHttpRequest
 	},
 	'https' : {
-		request: true,
-		get: true		
+		request: wrapHttpRequest,
+		get: wrapHttpRequest		
 	},
-	'url' : true
+	'url' : true,
+	'mongodb' : true
 }
 
 // defines properties from http.ClientRequest (own and inherited) that will be
@@ -228,7 +229,6 @@ function wrapHttpRequest(object, parent, nameOnParent, executionContext) {
 
 function wrapResponseEvent(object, parent, nameOnParent, executionContext) {
 	return wrapFunction(parent, nameOnParent, function (type, listener) {
-		console.log('wrapping event ' + type)
 		var oldFunc = arguments[--arguments.length];
 		if ('response' === type) {
 			// intercept 'response' event subscription and sandbox the response
