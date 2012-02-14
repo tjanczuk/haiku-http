@@ -72,7 +72,7 @@ function onRequestFinished(context) {
 }
 
 function haikuError(context, status, error) {
-	log(new Date() + ' Status: ' + status + ', Error: ' + error);
+	log(new Date() + ' Status: ' + status + ', Request URL: ' + context.req.url + ', Error: ' + error);
 	try {
 		context.req.resume();
 		context.res.writeHead(status);
@@ -532,6 +532,12 @@ function getHaikuParam(context, name, defaultValue) {
 }
 
 function processRequest(req, res) {
+
+	if (req.url === '/favicon.ico') {
+		res.writeHead(404);
+		res.end();
+		return;
+	}
 
 	activeRequests++;
 
