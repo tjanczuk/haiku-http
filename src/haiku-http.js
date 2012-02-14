@@ -58,6 +58,11 @@ var argv = require('optimist')
 		description: 'Interval between keepalive requests',
 		default: '5000'
 	})
+	.options('l', {
+		alias: 'maxConsole',
+		description: 'Maximum console buffer in bytes. Zero for unlimited.',
+		default: '4096'
+	})
 	.check(function (args) { return !args.help; })
 	.check(function (args) { return args.p != args.s; })
 	.check(function (args) {
