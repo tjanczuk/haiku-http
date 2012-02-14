@@ -15,8 +15,7 @@ process.on('message', function (msg) {
 })
 .on('uncaughtException', function (err) {
 	log('Entering shutdown mode after an uncaught exception: ' 
-		+ (err.message || err) + '\n'
-		+ (err.stack || ''));
+		+ (err.message || err) + (err.stack ? '\n' + err.stack : ''));
 	initiateShutdown();
 });
 
@@ -326,7 +325,7 @@ function executeHandler(context) {
 		vm.runInNewContext(context.handler, createSandbox(context), context.handlerName);
 	}
 	catch (e) {
-		haikuError(context, 500, 'Handler ' + context.handlerName + ' generated an exception at runtime:\n' 
+		haikuError(context, 500, 'Handler ' + context.handlerName + ' generated an exception at runtime: ' 
 			+ (e.message || e) + '\n'
 			+ (e.stack || ''));
 	}

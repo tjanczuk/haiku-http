@@ -61,8 +61,8 @@ var argv = require('optimist')
 	.check(function (args) { return !args.help; })
 	.check(function (args) { return args.p != args.s; })
 	.check(function (args) {
-		cert = fs.readFileSync(args.c);
-		key = fs.readFileSync(args.k);
+		args.cert = fs.readFileSync(args.c);
+		args.key = fs.readFileSync(args.k);
 		return true;
 	})
 	.check(function (args) {
