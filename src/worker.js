@@ -3,6 +3,8 @@ var http = require('http')
 	, url = require('url')
 	, vm = require('vm')
 	, cluster = require('cluster')
+	, util = require('util')
+	, sandbox = require('./sandbox.js')
 
 var shutdown
 	, shutdownInProgress = false
@@ -76,7 +78,7 @@ function haikuError(context, status, error) {
 	try {
 		context.req.resume();
 		context.res.writeHead(status);
-		if ('HEAD' !== context.req.method)
+		if (error && 'HEAD' !== context.req.method)
 			context.res.end((typeof error === 'string' ? error : JSON.stringify(error)) + '\n');
 		else
 			context.res.end();
@@ -85,206 +87,6 @@ function haikuError(context, status, error) {
 		// empty
 	}
 	onRequestFinished(context);
-}
-
-// defines the subset of module functionality that will be exposed
-// to the haiku-http handler via the "require" function
-
-var moduleSandbox = {
-	'http' : {
-		request: wrapHttpRequest,
-		get: wrapHttpRequest
-	},
-	'https' : {
-		request: wrapHttpRequest,
-		get: wrapHttpRequest		
-	},
-	'url' : true,
-	'mongodb' : true
-}
-
-// defines properties from http.ClientRequest (own and inherited) that will be
-// exposed to the haiku-http handler
-
-var clientRequestSandbox = {
-	writable: true,
-	write: true,
-	end: true,
-	abort: true,
-	setTimeout: true,
-	setNoDelay: true,
-	setSocketKeepAlive: true,
-	pipe: true,
-	addListener: wrapResponseEvent,
-	on: wrapResponseEvent,
-	once: wrapResponseEvent,
-	removeListener: true,
-	removeAllListeners: true,
-	setMaxListeners: true,
-	listeners: true,
-	emit: true	
-}
-
-// defines properties from http.ClientResponse (own and inherited) that will be
-// exposed to the haiku-http handler
-
-var clientResposeSandbox = {
-	readable: true,
-	statusCode: true,
-	httpVersion: true,
-	headers: true,
-	trailers: true,
-	setEncoding: true,
-	pause: true,
-	resume: true,
-	pipe: true,
-	addListener: true,
-	on: true,
-	once: true,
-	removeListener: true,
-	removeAllListeners: true,
-	setMaxListeners: true,
-	listeners: true,
-	emit: true
-}
-
-// defines properties from http.ServerRequest (own and inherited) that will be
-// exposed to the haiku-http handler
-
-var serverRequestSandbox = { 
-	readable: true,
-	method: true,
-	url: true,
-	headers: true,
-	trailers: true,
-	httpVersion: true,
-	setEncoding: true,
-	pause: true,
-	resume: true,
-	pipe: true,
-	addListener: true,
-	on: true,
-	once: true,
-	removeListener: true,
-	removeAllListeners: true,
-	setMaxListeners: true,
-	listeners: true,
-	emit: true
-}
-
-// defines properties from http.ServerResponse (own and inherited) that will be
-// exposed to the haiku-http handler
-
-var serverResponseSandbox = { 
-	writable: true,
-	writeHead: true,
-	statusCode: true,
-	removeHeader: true,
-	write: true,
-	addTrailers: true,
-	end: true,
-	addListener: true,
-	on: true,
-	once: true,
-	removeListener: true,
-	removeAllListeners: true,
-	setMaxListeners: true,
-	listeners: true,
-	emit: true
-}
-
-// wrap a function on an object with another function
-// the wrapped function will be passed as the last argument to the wrapping function
-// wrapping function is called in the context of the instance the wrapped function belongs to
-
-function wrapFunction(instance, func, wrapperFunc) {
-	var oldFunc = instance[func];
-	return function () {
-		arguments[arguments.length++] = oldFunc;
-		return wrapperFunc.apply(instance, arguments);
-	}
-}
-
-// wrap a function to invoke an inspector function immediately after
-// execution of the wrapped function
-
-function addPostInspector(instance, func, inspector) {
-	return wrapFunction(instance, func, function () {
-		var result = arguments[--arguments.length].apply(this, arguments);
-		inspector(arguments, result);
-		return result;
-	})
-}
-
-// wrap http.{request|get} to return a sandboxed http.ClientRequest
-
-function wrapHttpRequest(object, parent, nameOnParent, executionContext) {
-	return wrapFunction(parent, nameOnParent, function () {
-		var clientRequest = arguments[--arguments.length].apply(this, arguments);
-		return createObjectSandbox(clientRequestSandbox, clientRequest);
-	});
-}
-
-// wrap http.ClientRequest.{on|once|addListener}('response', ...) to return a sandboxed http.ClientResponse
-
-function wrapResponseEvent(object, parent, nameOnParent, executionContext) {
-	return wrapFunction(parent, nameOnParent, function (type, listener) {
-		var oldFunc = arguments[--arguments.length];
-		if ('response' === type) {
-			// intercept 'response' event subscription and sandbox the response
-			// TODO this wrapping will make removeListener break
-			oldFunc('request', function(res) {
-				listener(createObjectSandbox(clientResposeSandbox, res));
-			})
-		}
-		else
-			// pass-through for all other event types
-			return oldFunc.apply(this, arguments);
-	});
-}
-
-function createObjectSandbox(sandbox, object, parent, nameOnParent, executionContext) {
-	if (typeof sandbox === 'function') {
-		// custom sandboxing logic
-		return sandbox(object, parent, nameOnParent, executionContext);
-	}
-	else if (true === sandbox) {
-		if (typeof object === 'function')
-			// wrap functions to avoid leaking prototypes, constructors, and arguments
-			return function () { return object.apply(executionContext, arguments); }
-		else 
-			// "security treat as safe", return back without wrapping 
-			return object;
-	} 
-	else {
-
-		// sandbox properties owned by object and properties inherited from the prototype chain
-		// this flattens out the properties inherited from the prototype chain onto
-		// a single result object; any code that depends on the existence of the prototype chain
-		// will likely be broken by this, but any code that just invokes the members will continue
-		// working
-
-		var result = {};
-		var current = object;
-		while (current) {
-			for (var element in sandbox) 
-				if (!result[element] && current[element]) // preserve inheritance chain
-					result[element] = createObjectSandbox(sandbox[element], current[element], current, element, object);
-			current = Object.getPrototypeOf(current);
-		}
-
-		return result;
-	}
-}
-
-// sandbox the 'require' method: if a module is on a whitelist, create a sanboxed instance
-// otherwise throw
-
-function sandboxedRequire(name) {
-	if (moduleSandbox[name])
-		return createObjectSandbox(moduleSandbox[name], require.apply(this, arguments));
-	else
-		throw 'Module ' + name + ' is not available in the haiku-http sandbox.'
 }
 
 function emptyFunction() {}
@@ -307,7 +109,7 @@ function createBufferingConsole(context) {
 	context.consoleBuffer = '';
 	var bufferedLog = function () {
 		if (context.consoleBuffer !== undefined) { // this is undefined once console has been sent to the client
-			context.consoleBuffer += require('util').format.apply(this, arguments) + '\n';
+			context.consoleBuffer += util.format.apply(this, arguments) + '\n';
 			if (context.consoleBuffer.length > argv.l)
 				context.consoleBuffer = context.consoleBuffer.substring(context.buffer.length - argv.l);
 		}
@@ -329,7 +131,9 @@ function encodeConsole(console) {
 	return require('url').format({query : { c : console }}).substring(3).replace(/%20/g, ' ');
 }
 
-function addConsoleIntegration(context) {
+function createConsole(context) {
+
+	var result;
 
 	var onWrite = function () {
 		if (!context.onWriteProcessed) {
@@ -368,24 +172,26 @@ function addConsoleIntegration(context) {
 	}
 
 	if ('header' === context.console) {
-		context.sandbox.console = createBufferingConsole(context);
-		context.res.writeHead = wrapFunction(context.res, 'writeHead', onWrite);
-		context.res.write = wrapFunction(context.res, 'write', onWrite);
-		context.res.end = wrapFunction(context.res, 'end', onWrite);
+		result = createBufferingConsole(context);
+		context.res.writeHead = sandbox.wrapFunction(context.res, 'writeHead', onWrite);
+		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
+		context.res.end = sandbox.wrapFunction(context.res, 'end', onWrite);
 	}
 	else if ('trailer' === context.console) {
-		context.sandbox.console = createBufferingConsole(context);	
-		context.res.writeHead = wrapFunction(context.res, 'writeHead', onWrite);
-		context.res.write = wrapFunction(context.res, 'write', onWrite);
-		context.res.end = wrapFunction(context.res, 'end', onEnd);
+		result = createBufferingConsole(context);	
+		context.res.writeHead = sandbox.wrapFunction(context.res, 'writeHead', onWrite);
+		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
+		context.res.end = sandbox.wrapFunction(context.res, 'end', onEnd);
 	}
 	else if ('body' === context.console) {
-		context.sandbox.console = createBufferingConsole(context);
-		context.res.write = wrapFunction(context.res, 'write', onWrite);
-		context.res.end = wrapFunction(context.res, 'end', onEnd);
+		result = createBufferingConsole(context);
+		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
+		context.res.end = sandbox.wrapFunction(context.res, 'end', onEnd);
 	}
 	else
-		context.sandbox.console = createDummyConsole();
+		result = createDummyConsole();
+
+	return result;
 }
 
 function limitExecutionTime(context) {
@@ -401,46 +207,33 @@ function limitExecutionTime(context) {
 	// intercept end of response to cancel the timeout timer and 
 	// speed up shutdown if one is in progress
 
-	context.res.end = addPostInspector(context.res, 'end', function () {
+	context.res.end = sandbox.wrapFunction(context.res, 'end', function () {
+		var result = arguments[--arguments.length].apply(this, arguments);
 		if (context.timeout) {
 			clearTimeout(context.timeout);
 			delete context.timeout;
 			onRequestFinished(context);
 		}
+		return result;
 	});	
-}
-
-function createSandbox(context) {
-
-	// expose sandboxed 'require'
-
-	context.sandbox = {
-		require: sandboxedRequire,
-		setTimeout: setTimeout
-	};
-
-	// integrate console to dump console output or send it back in HTTP header, trailer or body 
-
-	addConsoleIntegration(context);
-
-	// limit execution time of the handler to the preconfigured value
-
-	limitExecutionTime(context);
-
-	// sandbox request and response
-
-	context.sandbox.req = createObjectSandbox(serverRequestSandbox, context.req);
-	context.sandbox.res = createObjectSandbox(serverResponseSandbox, context.res);
-
-	return context.sandbox;
 }
 
 function executeHandler(context) {
 	log(new Date() + ' executing ' + context.handlerName);
 
+	// limit execution time of the handler to the preconfigured value
+
+	limitExecutionTime(context);
+
+	// expose rigged console through sandbox 
+
+	var sandboxAddons = {
+		console: createConsole(context)
+	}
+
 	context.req.resume();
 	try {
-		vm.runInNewContext(context.handler, createSandbox(context), context.handlerName);
+		vm.runInNewContext(context.handler, sandbox.createSandbox(context, sandboxAddons), context.handlerName);
 	}
 	catch (e) {
 		haikuError(context, 500, 'Handler ' + context.handlerName + ' generated an exception at runtime: ' 
@@ -533,11 +326,8 @@ function getHaikuParam(context, name, defaultValue) {
 
 function processRequest(req, res) {
 
-	if (req.url === '/favicon.ico') {
-		res.writeHead(404);
-		res.end();
-		return;
-	}
+	if (req.url === '/favicon.ico') 
+		return haikuError({ req: req, res: res}, 404);
 
 	activeRequests++;
 
