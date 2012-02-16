@@ -1,3 +1,22 @@
+
+var NativeModule;
+
+// Hack to get a reference to node's internal NativeModule
+// Courtesy of Brandon Benvie, https://github.com/Benvie/Node.js-Ultra-REPL/blob/master/lib/ScopedModule.js
+(function(){
+  // intercept NativeModule.require's call to process.moduleLoadList.push
+  process.moduleLoadList.push = function(){
+    // `NativeModule.require('native_module')` returns NativeModule
+    NativeModule = arguments.callee.caller('native_module');
+
+    // delete the interceptor and forward normal functionality
+    delete process.moduleLoadList.push;
+    return Array.prototype.push.apply(process.moduleLoadList, arguments);
+  }
+  // force one module resolution
+  require('url');
+})();
+
 // defines the subset of module functionality that will be exposed
 // to the haiku-http handler via the "require" function
 
@@ -9,22 +28,23 @@ var moduleSandbox = {
 	http : {
 		request: wrapHttpRequest,
 		get: wrapHttpRequest,
-		Agent: verbatim
+		Agent: true
 	},
+
 	https : {
 		request: wrapHttpRequest,
 		get: wrapHttpRequest		
 	},
 
 	tls : {
-		createSecurePair: verbatim,
-		connect: verbatim
+		createSecurePair: true,
+		connect: true
 	},
 
 	net : {
-		Stream: verbatim,
-		createConnection: verbatim,
-		connect: verbatim
+		Stream: true,
+		createConnection: true,
+		connect: true
 	},
 
 	// secrity treat as safe APIs
@@ -33,13 +53,13 @@ var moduleSandbox = {
 	util : true,
 	buffer : true,
 	crypto : true,
-	stream : verbatim,
+	stream : true,
 	events : true,
 
 	// security transparent APIs
 
 	mongodb : true,
-	request : verbatim,
+	request : true,
 
 	// unsafe APIs that must be stubbed out
 
@@ -151,12 +171,6 @@ function wrapFunction(instance, func, wrapperFunc) {
 	}
 }
 
-// exposes an object as-is without any wrapping
-
-function verbatim(object, parent, nameOnParent, executionContext) {
-	return object;
-}
-
 // wrap http.{request|get} to return a sandboxed http.ClientRequest
 
 function wrapHttpRequest(object, parent, nameOnParent, executionContext) {
@@ -190,8 +204,8 @@ function createObjectSandbox(sandbox, object, parent, nameOnParent, executionCon
 		return sandbox(object, parent, nameOnParent, executionContext);
 	}
 	else if (true === sandbox) {
-		if (typeof object === 'function')
-			// wrap functions to avoid global state
+		if (typeof object === 'function' && executionContext)
+			// ensure the function is invoked in the correct execution context
 			return function () { return object.apply(executionContext, arguments); }
 		else 
 			// "security treat as safe", return back without wrapping 
@@ -199,11 +213,11 @@ function createObjectSandbox(sandbox, object, parent, nameOnParent, executionCon
 	} 
 	else {
 
-		// sandbox properties owned by object and properties inherited from the prototype chain
+		// Sandbox properties owned by object and properties inherited from the prototype chain
 		// this flattens out the properties inherited from the prototype chain onto
-		// a single result object; any code that depends on the existence of the prototype chain
-		// will likely be broken by this, but any code that just invokes the members will continue
-		// working
+		// a single result object. Any code that depends on the existence of the prototype chain
+		// will likely be broken by this, but any code that just invokes the members should continue
+		// working.
 
 		var result = {};
 		var current = object;
@@ -233,8 +247,8 @@ function createSandbox(context, addons) {
 	// expose sandboxed 'require', request, and response
 
 	context.sandbox = {
-		require: sandboxedRequire,
-		//require: require,
+		//require: sandboxedRequire,
+		require: require,
 		setTimeout: setTimeout,
 		req: createObjectSandbox(serverRequestSandbox, context.req),
 		res: createObjectSandbox(serverResponseSandbox, context.res)
@@ -252,13 +266,46 @@ function createSandbox(context, addons) {
 function enterModuleSandbox() {
 	var module = require('module');
 	var originalLoad = module._load;
+	var inRequireEpisode = false;
 	module._load = function (request, parent, isMain) {
-		if (moduleSandbox[request])
-			return createObjectSandbox(moduleSandbox[request], originalLoad(request, parent, isMain))
-		else if (request[0] === '.')
-			return originalLoad(request, parent, isMain);
-		else
-			throw 'Module ' + request + ' is not available in the haiku-http sandbox.'
+
+		// 'Require episode' is a synchronous module resolution code path initiated
+		// with the topmost invocation of 'require' method on the call stack. 
+		// A require episode may recursively invoke 'require' again.
+		// The purpose of the machanism below is to limit module caching to a single 
+		// 'require episode' to:
+		// - support cyclic module dependencies within a single require episode,
+		// - avoid sharing module instances across several haiku handlers.
+		// This is achieved by removing all cached modules at the beginning of every
+		// require episode. 
+
+		// TODO: investigate ways of scoping module caching to a single haiku handler
+		// (script context) for improved performance.
+
+		// if (request === 'querystring')
+		// 	console.log(new Error().stack)
+		
+		var enteredRequireEpisode = false;
+		if (!inRequireEpisode) {
+			inRequireEpisode = enteredRequireEpisode = true;
+			for (var i in module._cache) 
+				delete module._cache[i];
+			for (var i in NativeModule._cache) 
+				delete NativeModule._cache[i];
+		}
+
+		try {
+			if (moduleSandbox[request])
+				return createObjectSandbox(moduleSandbox[request], originalLoad(request, parent, isMain))
+			else if (request[0] === '.' || request === 'querystring') // request module requires its own 'querystring' without a dot
+				return originalLoad(request, parent, isMain);
+			else
+				throw 'Module ' + request + ' is not available in the haiku-http sandbox.'
+		}
+		finally {
+			if (enteredRequireEpisode)
+				inRequireEpisode = false;
+		}
 	}
 }
 
