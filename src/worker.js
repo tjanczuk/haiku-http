@@ -202,16 +202,18 @@ function resolveHandler(context) {
                 return haikuError(context, 400, 'Unable to connect to the host ' + context.host);
             else 
                 handlerRequest = engine.get({
-                    host: context.handlerUrl.host,
+                    host: context.handlerUrl.hostname,
+                    port: context.handlerUrl.port,
                     path: context.handlerUrl.path,
                     socket: socket, // using a tunnel
                     agent: false    // cannot use a default agent
                 }, processResponse).on('error', processError);
         }).on('error', processError).end();
     }
-    else // no proxy
+    else // no proxy 
         handlerRequest = engine.get({
-	        host: context.handlerUrl.host,
+	        host: context.handlerUrl.hostname,
+	        port: context.handlerUrl.port,
 	        path: context.handlerUrl.path
         }, processResponse).on('error', processError);
 }
@@ -248,6 +250,12 @@ function processRequest(req, res) {
 
 exports.main = function(args) {
 	argv = args;
+
+	// enter module sanbox - from now on all module reustes in this process will 
+	// be subject to sandboxing
+
+	sandbox.enterModuleSandbox();
+
 	httpServer = http.createServer(processRequest).listen(argv.p);
 	httpsServer = https.createServer({ cert: argv.cert, key: argv.key }, processRequest).listen(argv.s);
 }

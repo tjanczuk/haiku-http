@@ -2,17 +2,51 @@
 // to the haiku-http handler via the "require" function
 
 var moduleSandbox = {
-	'http' : {
+
+	// subset fuctionality of these modules to only expose client side APIs
+	// as needed, wrap APIs to sandbox inputs or outputs
+
+	http : {
 		request: wrapHttpRequest,
-		get: wrapHttpRequest
+		get: wrapHttpRequest,
+		Agent: verbatim
 	},
-	'https' : {
+	https : {
 		request: wrapHttpRequest,
 		get: wrapHttpRequest		
 	},
-	'url' : true,
-	'mongodb' : true,
-	'request' : verbatim
+
+	tls : {
+		createSecurePair: verbatim,
+		connect: verbatim
+	},
+
+	net : {
+		Stream: verbatim,
+		createConnection: verbatim,
+		connect: verbatim
+	},
+
+	// secrity treat as safe APIs
+
+	url : true,
+	util : true,
+	buffer : true,
+	crypto : true,
+	stream : verbatim,
+	events : true,
+
+	// security transparent APIs
+
+	mongodb : true,
+	request : verbatim,
+
+	// unsafe APIs that must be stubbed out
+
+	fs : {
+		// MongoDB library requires this module for GridStore scenarios, 
+		// but they are not relevant for haiku-http, so the fs module instance never gets used	
+	} 
 }
 
 // defines properties from http.ClientRequest (own and inherited) that will be
@@ -157,7 +191,7 @@ function createObjectSandbox(sandbox, object, parent, nameOnParent, executionCon
 	}
 	else if (true === sandbox) {
 		if (typeof object === 'function')
-			// wrap functions to avoid leaking prototypes, constructors, and arguments
+			// wrap functions to avoid global state
 			return function () { return object.apply(executionContext, arguments); }
 		else 
 			// "security treat as safe", return back without wrapping 
@@ -200,6 +234,7 @@ function createSandbox(context, addons) {
 
 	context.sandbox = {
 		require: sandboxedRequire,
+		//require: require,
 		setTimeout: setTimeout,
 		req: createObjectSandbox(serverRequestSandbox, context.req),
 		res: createObjectSandbox(serverResponseSandbox, context.res)
@@ -214,5 +249,19 @@ function createSandbox(context, addons) {
 	return context.sandbox;
 }
 
+function enterModuleSandbox() {
+	var module = require('module');
+	var originalLoad = module._load;
+	module._load = function (request, parent, isMain) {
+		if (moduleSandbox[request])
+			return createObjectSandbox(moduleSandbox[request], originalLoad(request, parent, isMain))
+		else if (request[0] === '.')
+			return originalLoad(request, parent, isMain);
+		else
+			throw 'Module ' + request + ' is not available in the haiku-http sandbox.'
+	}
+}
+
 exports.createSandbox = createSandbox;
 exports.wrapFunction = wrapFunction;
+exports.enterModuleSandbox = enterModuleSandbox;
