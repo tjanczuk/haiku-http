@@ -63,6 +63,10 @@ var argv = require('optimist')
 		description: 'Maximum console buffer in bytes. Zero for unlimited.',
 		default: '4096'
 	})
+	.options('d', {
+		alias: 'debug',
+		description: 'Enable debug mode'
+	})
 	.check(function (args) { return !args.help; })
 	.check(function (args) { return args.p != args.s; })
 	.check(function (args) {

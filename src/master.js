@@ -57,6 +57,7 @@ exports.main = function (args) {
 	log('Max requests before recycle: ' + argv.r);
 	log('Keepalive response timeout [ms]: ' + argv.a);
 	log('Keepalive interval [ms]: ' + argv.v);
+	log('Debug mode: ' + (argv.d ? 'yes' : 'no'));
 
 	for (var i = 0; i < argv.w; i++) 
 		createOneWorker();

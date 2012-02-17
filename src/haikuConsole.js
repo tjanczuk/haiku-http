@@ -2,13 +2,14 @@ var sandbox = require('./sandbox.js')
 	, url = require('url')
 	, util = require('util')
 
-function createDummyConsole() {
+function createDummyConsole(debugConsole) {
 	var emptyFunction = function() {}
+	var debugConsoleFunction = debugConsole ? function () { console.log.apply(console, arguments); } : emptyFunction;
 	return {
-		log: emptyFunction,
-		info: emptyFunction,
-		warn: emptyFunction,
-		error: emptyFunction,
+		log: debugConsoleFunction,
+		info: debugConsoleFunction,
+		warn: debugConsoleFunction,
+		error: debugConsoleFunction,
 		trace: emptyFunction,
 		assert: emptyFunction,
 		dir: emptyFunction,
@@ -17,10 +18,12 @@ function createDummyConsole() {
 	}
 }
 
-function createBufferingConsole(context, maxSize) {
+function createBufferingConsole(context, maxSize, debugConsole) {
 	context.consoleBuffer = '';
 
 	var bufferedLog = function () {
+		if (debugConsole)
+			console.log.apply(console, arguments)
 		if (context.consoleBuffer !== undefined) { // this is undefined once console has been sent to the client
 			context.consoleBuffer += util.format.apply(this, arguments) + '\n';
 			if (context.consoleBuffer.length > maxSize)
@@ -47,7 +50,7 @@ function encodeConsole(console) {
 	return url.format({query : { c : console }}).substring(3).replace(/%20/g, ' ');
 }
 
-function createConsole(context, maxSize) {
+function createConsole(context, maxSize, debugConsole) {
 
 	var result;
 
@@ -88,24 +91,24 @@ function createConsole(context, maxSize) {
 	}
 
 	if ('header' === context.console) {
-		result = createBufferingConsole(context, maxSize);
+		result = createBufferingConsole(context, maxSize, debugConsole);
 		context.res.writeHead = sandbox.wrapFunction(context.res, 'writeHead', onWrite);
 		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
 		context.res.end = sandbox.wrapFunction(context.res, 'end', onWrite);
 	}
 	else if ('trailer' === context.console) {
-		result = createBufferingConsole(context, maxSize);	
+		result = createBufferingConsole(context, maxSize, debugConsole);	
 		context.res.writeHead = sandbox.wrapFunction(context.res, 'writeHead', onWrite);
 		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
 		context.res.end = sandbox.wrapFunction(context.res, 'end', onEnd);
 	}
 	else if ('body' === context.console) {
-		result = createBufferingConsole(context, maxSize);
+		result = createBufferingConsole(context, maxSize, debugConsole);
 		context.res.write = sandbox.wrapFunction(context.res, 'write', onWrite);
 		context.res.end = sandbox.wrapFunction(context.res, 'end', onEnd);
 	}
 	else
-		result = createDummyConsole();
+		result = createDummyConsole(debugConsole);
 
 	return result;
 }

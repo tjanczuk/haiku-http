@@ -124,7 +124,7 @@ function executeHandler(context) {
 	// expose rigged console through sandbox 
 
 	var sandboxAddons = {
-		console: haikuConsole.createConsole(context, argv.l)
+		console: haikuConsole.createConsole(context, argv.l, argv.d)
 	}
 
 	context.req.resume();

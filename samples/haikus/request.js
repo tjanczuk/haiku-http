@@ -14,15 +14,12 @@
 var query = require('url').parse(req.url, true).query
 var word = query.word || 'the'
 
-if (word.length === 0)
-	throw new Error('The "word" URL query parameter cannot be empty.')
-
 var request = require('request')
 
 if (query.proxy_host && query.proxy_port)
     request = request.defaults({ proxy: 'http://' + query.proxy_host + ':' + query.proxy_port })
 
-request('http://www.google.com', function (error, response, body) {
+request('http://www.reuters.com', function (error, response, body) {
 	if (error || response.statusCode !== 200) {
 		res.writeHead(500)
 		res.end('Unexpected error getting http://reuters.com.\n')
@@ -32,6 +29,6 @@ request('http://www.google.com', function (error, response, body) {
 		while (0 !== (index = (body.indexOf(word, index) + 1)))
 			count++
 		res.writeHead(200)
-		res.end('Number of times the word "' + word + '" occurs on http://reuters.com is: ' + count)
+		res.end('Number of times the word "' + word + '" occurs on http://reuters.com is: ' + count + '\n')
 	}
 })
