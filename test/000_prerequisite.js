@@ -4,19 +4,19 @@ var mongodb = require('mongodb');
 module.exports = {
 	'haiku-http service is running': function (beforeEnd, assert) {
 		request('http://localhost', function (err, res, body) {
-			assert.isNull(err, 'haiku-http service is running at http://localhost')
-			assert.equal(res.statusCode, 400, 'haiku-http service is running at http://localhost')
+			assert.isNull(err, 'Haiku-http service is running at http://localhost')
+			assert.equal(res.statusCode, 400, 'Haiku-http service is running at http://localhost')
 		})
 	},
 	'haiku script service is running': function (beforeEnd, assert) {
 		request('http://localhost:8000/hello', function (err, res, body) {
-			assert.isNull(err, 'haiku sample script service is running on http://localhost:8000')
-			assert.equal(res.statusCode, 200, 'haiku sample script service is running on http://localhost:8000')
+			assert.isNull(err, 'Haiku sample script service is running on http://localhost:8000')
+			assert.equal(res.statusCode, 200, 'Haiku sample script service is running on http://localhost:8000')
 		})
 	},
-	'internet connection is available': function (beforeEnd, assert) {
+	'direct internet connection is available': function (beforeEnd, assert) {
 		request('http://www.google.com', function (err, res, body) {
-			assert.isNull(err, 'internet connection is available')
+			assert.isNull(err, 'Direct (non-proxied) internet connection is available. Without direct internet connection some tests will fail.')
 			assert.equal(res.statusCode, 200, 'internet connection is available')
 		})		
 	},
