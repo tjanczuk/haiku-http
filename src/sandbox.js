@@ -232,24 +232,20 @@ function createObjectSandbox(sandbox, object, parent, nameOnParent, executionCon
 	}
 }
 
-// sandbox the 'require' method: if a module is on a whitelist, create a sanboxed instance
-// otherwise throw
-
-function sandboxedRequire(name) {
-	if (moduleSandbox[name])
-		return createObjectSandbox(moduleSandbox[name], require.apply(this, arguments));
-	else
-		throw 'Module ' + name + ' is not available in the haiku-http sandbox.'
+function passthroughFunctionWrap(func) {
+	return function () { return func.apply(func, arguments); }
 }
 
 function createSandbox(context, addons) {
 
-	// expose sandboxed 'require', request, and response
+	// expose sandboxed 'require', request, and response, plus some useful globals
 
 	context.sandbox = {
-		//require: sandboxedRequire,
-		require: require,
-		setTimeout: setTimeout,
+		require: passthroughFunctionWrap(require), // sandboxing of module system happens in enterModuleSandbox() below
+		setTimeout: passthroughFunctionWrap(setTimeout),
+		clearTimeout: passthroughFunctionWrap(clearTimeout),
+		setInterval: passthroughFunctionWrap(setInterval),
+		clearInterval: passthroughFunctionWrap(clearInterval),
 		req: createObjectSandbox(serverRequestSandbox, context.req),
 		res: createObjectSandbox(serverResponseSandbox, context.res)
 	};
