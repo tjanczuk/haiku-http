@@ -21,12 +21,12 @@ var argv = require('optimist')
 	.options('c', {
 		alias: 'cert',
 		description: 'Server certificate for SSL',
-		default: './cert.pem'
+		default: __dirname + '/cert.pem'
 	})
 	.options('k', {
 		alias: 'key',
 		description: 'Private key for SSL',
-		default: './key.pem'
+		default: __dirname + '/key.pem'
 	})
 	.options('x', {
 		alias: 'proxy',
