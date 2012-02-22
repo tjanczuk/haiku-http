@@ -127,6 +127,10 @@ function executeHandler(context) {
 		console: haikuConsole.createConsole(context, argv.l, argv.d)
 	}
 
+	// evaluate handler code in strict mode to prevent stack walking from untrusted code
+
+	context.handler = "'use strict';" + context.handler;
+
 	context.req.resume();
 	try {
 		vm.runInNewContext(context.handler, sandbox.createSandbox(context, sandboxAddons), context.handlerName);
