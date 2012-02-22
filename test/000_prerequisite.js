@@ -4,7 +4,7 @@ var request = require('request')
 
 describe('000_prerequisities.js:', function () {
 	describe('haiku-http service', function () {
-		it('is running at http://localhost', function (done) {
+		it('is running at http://localhost. Please start the haiku-http service with "sudo node src/haiku-http.js".', function (done) {
 			request('http://localhost', function (err, res, body) {
 				assert.ifError(err)
 				assert.equal(res.statusCode, 400)
@@ -14,7 +14,7 @@ describe('000_prerequisities.js:', function () {
 	})
 	
 	describe('haiku-http script service', function () {
-		it('is running at http://localhost:8000', function (done) {
+		it('is running at http://localhost:8000. Please start the haiku-http script service with "node samples/server.js".', function (done) {
 			request('http://localhost:8000/hello', function (err, res, body) {
 				assert.ifError(err)
 				assert.equal(res.statusCode, 200)
