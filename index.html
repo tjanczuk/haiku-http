@@ -38,6 +38,15 @@
 </head>
 
 <body>
+<div id="fb-root"></div>
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_US/all.js#xfbml=1";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
   <a href="https://github.com/tjanczuk/haiku-http"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub" /></a>
 
   <div id="container">
@@ -99,6 +108,7 @@ res.end('Hello, world!');
           <p>Or just show the love and moral support:</p>
 <a href="https://twitter.com/share" class="twitter-share-button" data-text="run simple node.js HTTP APIs with #haiku-http runtime" data-size="large" data-hashtags="nodejs,http">Tweet</a>
 <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src="//platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);}}(document,"script","twitter-wjs");</script>
+<div class="fb-like" data-href="http://tjanczuk.github.com/haiku-http/" data-send="true" data-width="450" data-show-faces="true" data-action="recommend" data-colorscheme="dark"></div>
         </td>
       </tr>
     </table>
