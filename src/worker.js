@@ -54,8 +54,8 @@ function initiateShutdown() {
 		}
 		else {
 			// delayed shutdown allows active requests to finish processing
-			// shutdown timeout is the same as the handler processing timeout
-			shutdown = setTimeout(shutdownNext, argv.t); 
+			// shutdown timeout is twice the handler processing timeout
+			shutdown = setTimeout(shutdownNext, argv.t * 2); 
 		}
 	}
 }
