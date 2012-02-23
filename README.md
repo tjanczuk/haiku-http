@@ -100,3 +100,34 @@ http://localhost?x-haiku-handler=https://github.com/tjanczuk/haiku-http/blob/mas
 ```
 
 For more examples of the various modes of accessing the console, check out the [console.js](https://github.com/tjanczuk/haiku-http/blob/master/samples/haikus/console.js) sample. 
+
+## Writing haiku-http handlers
+
+The haiku-http handler corresponds to the body of the HTTP reqeust callback function in node.js. 
+
+For example, given the following node.js application:
+
+```
+require('http').createServer(function (req, res) {
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end('Hello World\n');
+}).listen(1337, "127.0.0.1");
+```
+
+a corresponding haiku-http handler would be:
+
+```
+res.writeHead(200, {'Content-Type': 'text/plain'});
+res.end('Hello World\n');
+```
+
+Within the haiku-http handler, the following globals are available:
+
+- `req` and `res` represent the HTTP request and response objects normally passed to the node.js request handler. Both objects are sandboxed. Check the section about sandboxing for details.  
+- `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval` work the same as in node.js.  
+- `require` allows loading a node.js module from the subset available in the haiku-http sandbox environment. These include node.js core modules `http`, `https`, `net`, `tls`, `crypto`, `url`, `buffer`, `stream`, `events`, `util`, as well as third party modules `request`, and `mongodb`. All modules are sandboxed to only offer client side APIs (e.g. one can make outbound HTTP calls or TCP connections, but not establish a listener). Check the section about sandboxing for more details. 
+
+Unlike in node.js, no global, in-memory state created by a haiku-http handler is preserved between subsequent calls.  
+
+
+
