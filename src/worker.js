@@ -9,7 +9,6 @@ var http = require('http')
 
 var shutdown
 	, shutdownInProgress = false
-	, activeRequests = 0
 	, requestCount = 0
 	, argv
 
@@ -33,9 +32,15 @@ function shutdownNext() {
 	}
 
 	process.nextTick(function() {
-		log('Recycling self. Active requests: ' + activeRequests)
+		log('Recycling self. Active connections: TCP: ' + httpServer.connections + ', TLS: ' + httpsServer.connections);
 		process.exit();
 	});	
+}
+
+// raised by HTTP or HTTPS server when one of the client connections closes
+function onConnectionClose() {
+	if (shutdownInProgress && 0 === (httpServer.connections + httpsServer.connections))
+		shutdownNext()
 }
 
 function initiateShutdown() {
@@ -48,13 +53,16 @@ function initiateShutdown() {
 
 		shutdownInProgress = true;
 
-		if (0 === activeRequests) {
-			// there are no active requests - shut down now
+		if (0 === (httpServer.connections + httpsServer.connections)) {
+			// there are no active connections - shut down now
+
 			shutdownNext();
 		}
 		else {
-			// delayed shutdown allows active requests to finish processing
-			// shutdown timeout is twice the handler processing timeout
+			// Shut down when all active connections close (see onConnectionClose above) 
+			// or when the graceful shutdown timeout expires, whichever comes first.
+			// Graceful shutdown timeout is twice the handler processing timeout.
+
 			shutdown = setTimeout(shutdownNext, argv.t * 2); 
 		}
 	}
@@ -63,14 +71,7 @@ function initiateShutdown() {
 function onRequestFinished(context) {
 	if (!context.finished) {
 		context.finished = true;
-		activeRequests--;
-		if (shutdownInProgress && 0 === activeRequests) {
-
-			// we have finished processing the last active request while in shutdown mode
-			// no reason to delay the shutdown any more - proceed to shutdown now
-
-			shutdownNext();
-		}
+		context.req.socket.end(); // force buffers to be be flushed
 	}
 }
 
@@ -231,10 +232,9 @@ function processRequest(req, res) {
 	if (req.url === '/favicon.ico') 
 		return haikuError({ req: req, res: res}, 404);
 
-	activeRequests++;
-
 	if (!shutdownInProgress && argv.r > 0 && ++requestCount >= argv.r) {
-		log('Entering shutdown mode after reaching request quota. Current active requests: ' + activeRequests);
+		log('Entering shutdown mode after reaching request quota. Current active connections: TCP: ' 
+			+ httpServer.connections + ', TLS: ' + httpsServer.connections);
 		initiateShutdown();
 	}
 
@@ -260,6 +260,15 @@ exports.main = function(args) {
 
 	sandbox.enterModuleSandbox();
 
-	httpServer = http.createServer(processRequest).listen(argv.p);
-	httpsServer = https.createServer({ cert: argv.cert, key: argv.key }, processRequest).listen(argv.s);
+	httpServer = http.createServer(processRequest)
+	.on('connection', function(socket) {
+		socket.on('close', onConnectionClose)
+	})
+	.listen(argv.p);
+
+	httpsServer = https.createServer({ cert: argv.cert, key: argv.key }, processRequest)
+	.on('connection', function(socket) {
+		socket.on('close', onConnectionClose)
+	})
+	.listen(argv.s);
 }
