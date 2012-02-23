@@ -173,11 +173,11 @@ node node_modules/haiku-http/samples/server.js
 You are now ready to run tests:
 
 ```
-mocha
+mocha node_modules/haiku-http/test/*
 ```
 
 If you experience errors, first make sure that test prerequisities are all met:
 
 ```
-mocha -R spec test/0*
+mocha -R spec node_modules/haiku-http/test/0*
 ```
