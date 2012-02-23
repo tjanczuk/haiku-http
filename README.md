@@ -25,6 +25,8 @@ Start the haiku-http runtime (default settings require ports 80 and 443 to be av
 sudo node node_modules/haiku-http/src/haiku-http.js
 ```
 
+(in an environment with an HTTP proxy, one must specify the proxy address using the `-x` parameter, e.g. `sudo node node_modules/haiku-http/src/haiku-http.js -x itgproxy:80`)
+
 Open a browser and navigate to 
 
 ```
