@@ -1,10 +1,11 @@
 {
   "name": "haiku-http",
   "description": "Runtime for simple HTTP web APIs",
-  "version": "0.1.1",
+  "version": "0.2.0-pre",
   "author": {
     "name": "Tomasz Janczuk <tomasz@janczuk.org>",
-    "url": "http://tomasz.janczuk.org"
+    "url": "http://tomasz.janczuk.org",
+    "twitter": "tjanczuk"
   },
   "dependencies": {
     "optimist": "0.3.1",
@@ -22,5 +23,10 @@
     "type": "git",
     "url": "https://github.com/tjanczuk/haiku-http.git"
   },
-  "engines": { "node": ">= 0.7.0-pre" }
+  "engines": { 
+    "node": ">= 0.7.0-pre" 
+  },
+  "scripts": {
+    "install": "node-waf configure build"
+  }
 }
