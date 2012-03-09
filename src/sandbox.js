@@ -47,12 +47,17 @@ var moduleSandbox = {
 		connect: true
 	},
 
+	// limit crypto surface area to support implementation closure of other modules
+
+	crypto : {
+		createHash: true		// required by MongoDB
+	}, 
+
 	// secrity treat as safe APIs
 
 	url : true,
 	util : true,
 	buffer : true,
-	crypto : true,
 	stream : true,
 	events : true,
 
