@@ -12,12 +12,13 @@ using namespace v8;
 // - with pthreads: http://www.kernel.org/doc/man-pages/online/pages/man3/pthread_getcpuclockid.3.html
 // - on Mach: http://stackoverflow.com/questions/6788274/ios-mac-cpu-usage-for-thread
 
-int nodeThread;
+thread_t nodeThread;
 unsigned int threshold = 0;
 pthread_mutex_t mutex;
 Persistent<String> currentCtx;
 bool watchdogActive = false;
 bool inUserCode = false;
+int userCodeDepth = 0;
 // struct timespec enterTime;
 // clockid_t nodeClockId = 0;
 double enterTime; // in seconds
@@ -26,10 +27,12 @@ int GetNodeThreadCPUTime(double* s) {
 	if (!s)
 		return -1;
 
+	int error;
 	thread_info_data_t threadInfo;
 	mach_msg_type_number_t count;
-	if (0 != thread_info(nodeThread, THREAD_BASIC_INFO, (thread_info_t)threadInfo, &count))
-		return -1;
+
+	if (0 != (error = thread_info(nodeThread, THREAD_BASIC_INFO, (thread_info_t)threadInfo, &count)))
+		return error;
 
 	thread_basic_info_t basicThreadInfo = (thread_basic_info_t)threadInfo;
 
@@ -42,34 +45,59 @@ int GetNodeThreadCPUTime(double* s) {
 	return 0;
 }
 
-Handle<Value> PrintNodeThreadTime(const Arguments& args) {
-	double s;
-	if (0 == GetNodeThreadCPUTime(&s))
-		printf("GetNodeThreadTime: %f\n", s);
-	else
-		printf("GetNodeThreadTime: error\n");
-
-	return Undefined();
-}
-
-Handle<Value> SetContextData(const Arguments& args) {
+Handle<Value> SetContextDataOn(const Arguments& args) {
 	HandleScope scope;
 
-	if (!args[0]->IsString())
-		return ThrowException(Exception::TypeError(String::New("The parameter must be a string.")));
+	if (args.Length() != 2 || !args[0]->IsObject() || !args[1]->IsString())
+		return ThrowException(Exception::TypeError(String::New("The first parameter must be an object and the second a string.")));
 
-	Local<Value> data = Context::GetCurrent()->GetData();
+	Local<Value> data = args[0]->ToObject()->CreationContext()->GetData();
 
-	if (!data.IsEmpty())
-		return ThrowException(Exception::Error(String::New("Current context already has context data set.")));
+	if (data->IsString() && data->ToString() != args[1]->ToString()) {
+		printf("SetContextDataOn: current data on object's creation context: %s, new data: %s\n", 
+			*String::Utf8Value(data),
+			*String::Utf8Value(args[1]->ToString()));
+		return ThrowException(Exception::Error(String::New("Object's creation context already has a different context data set.")));
+	}
 
-	Context::GetCurrent()->SetData(args[0]->ToString());
+	args[0]->ToObject()->CreationContext()->SetData(args[1]->ToString()); // TODO should this be a persistent handle?
+
+	return Undefined();	
+}
+
+Handle<Value> GetContextDataOf(const Arguments& args) {
+	HandleScope scope;
+
+	if (args.Length() != 1 || !args[0]->IsObject())
+		return ThrowException(Exception::TypeError(String::New("The first parameter must be an object.")));
+
+	return args[0]->ToObject()->CreationContext()->GetData();
+}
+
+Handle<Value> EnterContextOf(const Arguments& args) {
+	HandleScope scope;
+
+	if (args.Length() != 1 || !args[0]->IsObject())
+		return ThrowException(Exception::TypeError(String::New("The first parameter must be an object.")));
+
+	args[0]->ToObject()->CreationContext()->Enter();
 
 	return Undefined();
 }
 
-Handle<Value> GetContextData(const Arguments& args) {
-	return Context::GetCurrent()->GetData();
+Handle<Value> ExitContextOf(const Arguments& args) {
+	HandleScope scope;
+
+	if (args.Length() != 1 || !args[0]->IsObject())
+		return ThrowException(Exception::TypeError(String::New("The first parameter must be an object.")));
+
+	args[0]->ToObject()->CreationContext()->Exit();
+
+	return Undefined();
+}
+
+Handle<Value> GetCurrentContextData(const Arguments& args) {
+	return currentCtx;
 }
 
 void* Watchdog(void *data) {
@@ -130,49 +158,83 @@ Handle<Value> StartWatchdog(const Arguments& args) {
 
 Handle<Value> EnterUserCode(const Arguments& args) {
 	HandleScope scope;
-	int error = 0;
+	const char* exception = NULL;
 
-	if (inUserCode)
-		return ThrowException(Exception::Error(String::New("Internal error. Haiku-http thinks user code is already executing.")));
+	if (0 == userCodeDepth) {
+		pthread_mutex_lock(&mutex);
 
-	pthread_mutex_lock(&mutex);
-	// if (-1 != (error = clock_gettime(nodeClockId, &enterTime))) {
-	if (0 == (error = GetNodeThreadCPUTime(&enterTime))) {
-		currentCtx = Persistent<String>::New(Context::GetCurrent()->GetData()->ToString());
-		inUserCode = true;
-		watchdogActive = true;
+		// if (-1 != (error = clock_gettime(nodeClockId, &enterTime))) {
+		/*if (0 != GetNodeThreadCPUTime(&enterTime))
+			exception = "Internal Error. Unable to capture thread CPU time.";
+		else */if (1 != args.Length())
+			exception = "One parameter required.";
+		else if (!args[0]->IsObject())
+			exception = "The parameter must be an object (created in user code context).";
+		else if (!args[0]->ToObject()->CreationContext()->GetData()->IsString())
+			exception = "The specified object's creation context does not have context data set.";
+		else {
+			printf("enter user code: %s\n", *String::Utf8Value(args[0]->ToObject()->CreationContext()->GetData()->ToString()));
+			currentCtx = Persistent<String>::New(args[0]->ToObject()->CreationContext()->GetData()->ToString());
+			inUserCode = true;
+			watchdogActive = true;
+		}
+
+		pthread_mutex_unlock(&mutex);
 	}
-	pthread_mutex_unlock(&mutex);
 
-	if (error)
-		return ThrowException(Exception::Error(String::New("Internal error. Unable to capture thread CPU time.")));
-	else
+	if (exception)
+		return ThrowException(Exception::Error(String::New(exception)));
+	else {
+		userCodeDepth++;
 		return Undefined();
+	}
 }
 
 Handle<Value> LeaveUserCode(const Arguments& args) {
 	HandleScope scope;
 
-	if (!inUserCode)
-		return ThrowException(Exception::Error(String::New("Internal error. Haiku-http thinks no user code is executing.")));
+	if (1 == userCodeDepth) {
+		printf("leave user code\n");
+		pthread_mutex_lock(&mutex);
+		inUserCode = false;
+		currentCtx.Dispose();
+		currentCtx.Clear();
+		pthread_mutex_unlock(&mutex);
+	}
 
-	pthread_mutex_lock(&mutex);
-	inUserCode = false;
-	currentCtx.Dispose();
-	currentCtx.Clear();
-	pthread_mutex_unlock(&mutex);
+	userCodeDepth--;
 
+	return Undefined();
+}
+
+Handle<Value> RunInObjectContext(const Arguments& args) {
+	HandleScope scope;
+
+	if (args.Length() != 2 || !args[0]->IsObject() || !args[1]->IsFunction())
+		return ThrowException(Exception::TypeError(String::New("The first parameter must be an object and the second a function to run in that object's creation context.")));
+
+	Handle<Object> global = args[0]->ToObject()->CreationContext()->Global();
+	Context::Scope contextScope(args[0]->ToObject()->CreationContext());
+	Handle<Value> result = Local<Function>::Cast(args[1])->Call(global, 0, NULL);
+
+	return scope.Close(result);
+}
+
+Handle<Value> Printf(const Arguments& args) {
+	printf("%s\n", *String::Utf8Value(args[0]->ToString()));
 	return Undefined();
 }
 
 extern "C"
 void init(Handle<Object> target) {
 	nodeThread = mach_thread_self();
-	target->Set(String::NewSymbol("setContextData"), FunctionTemplate::New(SetContextData)->GetFunction());
-	target->Set(String::NewSymbol("getContextData"), FunctionTemplate::New(GetContextData)->GetFunction());
+	target->Set(String::NewSymbol("setContextDataOn"), FunctionTemplate::New(SetContextDataOn)->GetFunction());
+	target->Set(String::NewSymbol("getCurrentContextData"), FunctionTemplate::New(GetCurrentContextData)->GetFunction());
+	target->Set(String::NewSymbol("getContextDataOf"), FunctionTemplate::New(GetContextDataOf)->GetFunction());
 	target->Set(String::NewSymbol("startWatchdog"), FunctionTemplate::New(StartWatchdog)->GetFunction());
 	target->Set(String::NewSymbol("enterUserCode"), FunctionTemplate::New(EnterUserCode)->GetFunction());
 	target->Set(String::NewSymbol("leaveUserCode"), FunctionTemplate::New(LeaveUserCode)->GetFunction());
-	target->Set(String::NewSymbol("printNodeThreadTime"), FunctionTemplate::New(PrintNodeThreadTime)->GetFunction());
+	target->Set(String::NewSymbol("runInObjectContext"), FunctionTemplate::New(RunInObjectContext)->GetFunction());
+	target->Set(String::NewSymbol("printf"), FunctionTemplate::New(Printf)->GetFunction());
 }
 NODE_MODULE(haiku_extensions, init)

@@ -1,3 +1,21 @@
+var NativeModule;
+
+// Hack to get a reference to node's internal NativeModule
+// Courtesy of Brandon Benvie, https://github.com/Benvie/Node.js-Ultra-REPL/blob/master/lib/ScopedModule.js
+(function(){
+  // intercept NativeModule.require's call to process.moduleLoadList.push
+  process.moduleLoadList.push = function() {
+    // `NativeModule.require('native_module')` returns NativeModule
+    NativeModule = arguments.callee.caller('native_module');
+
+    // delete the interceptor and forward normal functionality
+    delete process.moduleLoadList.push;
+    return Array.prototype.push.apply(process.moduleLoadList, arguments);
+  }
+  // force one module resolution
+  require('url');
+})();	
+
 var http = require('http')
 	, https = require('https')
 	, url = require('url')
@@ -6,11 +24,13 @@ var http = require('http')
 	, util = require('util')
 	, haikuConsole = require('./haikuConsole.js')
 	, sandbox = require('./sandbox.js')
+	, haiku_extensions = require('./build/Release/haiku_extensions.node')
 
 var shutdown
 	, shutdownInProgress = false
 	, requestCount = 0
 	, argv
+	, scriptCount = 0
 
 process.on('message', function (msg) {
 	process.send({ response: msg.challange });
@@ -125,20 +145,59 @@ function executeHandler(context) {
 	// expose rigged console through sandbox 
 
 	var sandboxAddons = {
-		console: haikuConsole.createConsole(context, argv.l, argv.d)
+		console: haikuConsole.createConsole(context, argv.l, argv.d),
+		haiku: { 
+			// setContextData: haiku_extensions.setContextData,
+			getCurrentContextData: haiku_extensions.getCurrentContextData
+		}
 	}
 
 	// evaluate handler code in strict mode to prevent stack walking from untrusted code
 
-	context.handler = "'use strict';" + context.handler;
+	context.handler = "'use strict';" + context.handler
+
+	// calculate the script name which will identify user code
+
+	var scriptName = (scriptCount++) + '#' + context.handlerName
 
 	context.req.resume();
+	var inUserCode = false;
 	try {
-		vm.runInNewContext(context.handler, sandbox.createSandbox(context, sandboxAddons), context.handlerName);
+		// create a new V8 context for executing the handler
+		
+		var v8ctx = vm.createContext(sandbox.createSandbox(context, sandboxAddons))
+
+		// first associate a script id with that V8 context so that later we can attribute JS callbacks
+		// to a particular haiku-handler
+
+		var contextHook = vm.runInContext("(function () { return {}; })();", v8ctx, scriptName)
+		haiku_extensions.setContextDataOn(contextHook, scriptName)
+
+		// notify the watchdog we are entering user code
+
+		haiku_extensions.enterUserCode(contextHook)
+		inUserCode = true
+
+		// finally execute the actual handler code 
+
+		vm.runInContext(context.handler, v8ctx, scriptName)
 	}
 	catch (e) {
+		// notify the watchdog we have left user code
+
+		if (inUserCode) {
+			haiku_extensions.leaveUserCode()
+			inUserCode = false
+		}
+
 		haikuError(context, 500, 'Handler ' + context.handlerName + ' generated an exception at runtime: ' 
 			+ (e.message || e) + (e.stack ? '\n' + e.stack : ''));
+	}
+	finally {
+		// notify the watchdog we have left user code
+
+		if (inUserCode) 
+			haiku_extensions.leaveUserCode()
 	}
 }
 
@@ -258,8 +317,6 @@ exports.main = function(args) {
 	// enter module sanbox - from now on all module reustes in this process will 
 	// be subject to sandboxing
 
-	sandbox.enterModuleSandbox();
-
 	httpServer = http.createServer(processRequest)
 	.on('connection', function(socket) {
 		socket.on('close', onConnectionClose)
@@ -271,4 +328,8 @@ exports.main = function(args) {
 		socket.on('close', onConnectionClose)
 	})
 	.listen(argv.s);
+
+	haiku_extensions.setContextDataOn(processRequest, 'MainContext')
+
+	sandbox.enterModuleSandbox(NativeModule);
 }
