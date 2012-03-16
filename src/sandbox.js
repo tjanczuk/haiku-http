@@ -304,6 +304,9 @@ function createSandbox(context, addons) {
 		haiku: {
 			getContextDataOf: passthroughFunctionWrap(haiku_extensions.getContextDataOf),
 			getCurrentContextData: passthroughFunctionWrap(haiku_extensions.getCurrentContextData)
+		},
+		process: {
+			nextTick: passthroughFunctionWrap(process.nextTick)
 		}
 	};
 

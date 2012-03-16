@@ -26,6 +26,18 @@ describe('400_entrypoint.js:', function () {
 		})		
 	})
 
+	it('http://localhost?x-haiku-handler=http://localhost:8000/tests/entrypoint_nextTick is sandboxed', function (done) {
+		request('http://localhost?x-haiku-handler=http://localhost:8000/tests/entrypoint_nextTick', function (err, res, body) {
+			assert.ifError(err)
+			assert.equal(res.statusCode, 200)
+			var result = JSON.parse(body)
+			assert.equal(result[0], result[1])
+			assert.ok(0 < result[0].indexOf('#'))
+			assert.equal(result[0].substring(result[0].indexOf('#') + 1), 'http://localhost:8000/tests/entrypoint_nextTick')
+			done()
+		})		
+	})
+
 	it('http://localhost?x-haiku-handler=http://localhost:8000/tests/entrypoint_EventEmitter is sandboxed (using MongoDB)', function (done) {
 		request('http://localhost?x-haiku-handler=http://localhost:8000/tests/entrypoint_EventEmitter', function (err, res, body) {
 			assert.ifError(err)
