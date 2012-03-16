@@ -165,7 +165,7 @@ Handle<Value> EnterUserCode(const Arguments& args) {
 		// if (-1 != (error = clock_gettime(nodeClockId, &enterTime))) {
 		/*if (0 != GetNodeThreadCPUTime(&enterTime))
 			exception = "Internal Error. Unable to capture thread CPU time.";
-		else */if (1 != args.Length())
+		else */ if (1 != args.Length())
 			exception = "One parameter required.";
 		else if (!args[0]->IsObject())
 			exception = "The parameter must be an object (created in user code context).";
