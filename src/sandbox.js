@@ -24,6 +24,7 @@ function EventEmitter() {
 		enumerable: true,
 		value: function(type) {
 			var handlers = self.listeners(type)
+			var userCode = handlers[0]
 			if (typeof userCode === 'function') {
 				userCode = userCode.listener || userCode
 				if (typeof userCode === 'function') {
@@ -274,6 +275,20 @@ function passthroughFunctionWrap(func) {
 	return function () { return func.apply(func, arguments); }
 }
 
+function userFunctionWrap(func) {
+	return function () {
+		if (typeof func === 'function')
+			haiku_extensions.enterUserCode(func)
+		try {
+			return func.apply(this, arguments)
+		}
+		finally {
+			if (typeof func === 'function')
+				haiku_extensions.leaveUserCode()			
+		}
+	}
+}
+
 function createSandbox(context, addons) {
 
 	// expose sandboxed 'require', request, and response, plus some useful globals
@@ -285,7 +300,11 @@ function createSandbox(context, addons) {
 		setInterval: passthroughFunctionWrap(setInterval),
 		clearInterval: passthroughFunctionWrap(clearInterval),
 		req: createObjectSandbox(serverRequestSandbox, context.req),
-		res: createObjectSandbox(serverResponseSandbox, context.res)
+		res: createObjectSandbox(serverResponseSandbox, context.res),
+		haiku: {
+			getContextDataOf: passthroughFunctionWrap(haiku_extensions.getContextDataOf),
+			getCurrentContextData: passthroughFunctionWrap(haiku_extensions.getCurrentContextData)
+		}
 	};
 
 	// add custom add-ons to the sandbox (e.g. 'console')
@@ -299,14 +318,43 @@ function createSandbox(context, addons) {
 
 function enterModuleSandbox(NativeModule) {
 
+	var global = (function () { return this; }).call(null)
+
+	// Sandbox process.nextTick as an entry point to user code
+
+	oldNextTick = process.nextTick
+	process.nextTick = function (func) {
+		return oldNextTick(userFunctionWrap(func))
+	}
+
+	// Sandbox setTimeout as an entry point to user code
+
+	oldSetTimeout = global.setTimeout
+	global.setTimeout = function () {
+		var newArguments = [ userFunctionWrap(arguments[0]) ];
+		for (var i = 1; i < arguments.length; i++)
+			newArguments.push(arguments[i])
+		return oldSetTimeout.apply(this, newArguments)
+	}
+
+	// Sandbox setInterval as an entry point to user code
+
+	oldSetInterval = global.setInterval
+	global.setInterval = function () {
+		var newArguments = [ userFunctionWrap(arguments[0]) ];
+		for (var i = 1; i < arguments.length; i++)
+			newArguments.push(arguments[i])
+		return oldSetInterval.apply(this, newArguments)
+	}
+
+	// Sandbox the module system
+
 	var inRequireEpisode = false
 
 	// Force all native modules to be loaded in their own context.
 	// Native modules are by default loaded in the main V8 context. We need to override this logic
 	// to load native modules in their own V8 context instead, such that each copy of a native module
 	// can be assigned to one particular handler instance
-
-	var global = (function () { return this; }).call(null)
 
 	var oldRequire = NativeModule.require
 

@@ -145,11 +145,7 @@ function executeHandler(context) {
 	// expose rigged console through sandbox 
 
 	var sandboxAddons = {
-		console: haikuConsole.createConsole(context, argv.l, argv.d),
-		haiku: { 
-			// setContextData: haiku_extensions.setContextData,
-			getCurrentContextData: haiku_extensions.getCurrentContextData
-		}
+		console: haikuConsole.createConsole(context, argv.l, argv.d)
 	}
 
 	// evaluate handler code in strict mode to prevent stack walking from untrusted code

@@ -159,7 +159,6 @@ Handle<Value> StartWatchdog(const Arguments& args) {
 Handle<Value> EnterUserCode(const Arguments& args) {
 	HandleScope scope;
 	const char* exception = NULL;
-
 	if (0 == userCodeDepth) {
 		pthread_mutex_lock(&mutex);
 
@@ -173,7 +172,7 @@ Handle<Value> EnterUserCode(const Arguments& args) {
 		else if (!args[0]->ToObject()->CreationContext()->GetData()->IsString())
 			exception = "The specified object's creation context does not have context data set.";
 		else {
-			printf("enter user code: %s\n", *String::Utf8Value(args[0]->ToObject()->CreationContext()->GetData()->ToString()));
+			// printf("enter user code: %s\n", *String::Utf8Value(args[0]->ToObject()->CreationContext()->GetData()->ToString()));
 			currentCtx = Persistent<String>::New(args[0]->ToObject()->CreationContext()->GetData()->ToString());
 			inUserCode = true;
 			watchdogActive = true;
@@ -194,7 +193,7 @@ Handle<Value> LeaveUserCode(const Arguments& args) {
 	HandleScope scope;
 
 	if (1 == userCodeDepth) {
-		printf("leave user code\n");
+		// printf("leave user code\n");
 		pthread_mutex_lock(&mutex);
 		inUserCode = false;
 		currentCtx.Dispose();
